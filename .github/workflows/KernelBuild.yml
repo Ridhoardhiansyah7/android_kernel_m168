@@ -1,10 +1,10 @@
-name: Kernel Build
+name: Build Kernel
 
 on:
   workflow_dispatch:
     inputs:
       defconfig:
-        description: 'Kernel defconfig name (e.g., a3core_eur_open_defconfig)'
+        description: 'Kernel defconfig name'
         required: true
         default: 'a3core_eur_open_defconfig'
 
@@ -14,12 +14,9 @@ jobs:
     env:
       ARCH: arm64
       KERNEL_ROOT: ${{ github.workspace }}
-      BSP_BUILD_DT_OVERLAY: "y"
-      BSP_BUILD_ANDROID_OS: "y"
-      BSP_BUILD_FAMILY: "sharkl3"
       CROSS_COMPILE: "${{ github.workspace }}/toolchains/gcc-14.3/bin/aarch64-none-linux-gnu-"
       CROSS_COMPILE_ARM32: "${{ github.workspace }}/toolchains/gcc-14.3/bin/arm-none-linux-gnueabihf-"
-      CC: "clang"
+      CC: clang
 
     steps:
       - name: Checkout repository
@@ -30,12 +27,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git make gcc g++ python3 libncurses-dev flex bison ccache \
-            device-tree-compiler lz4 xz-utils zip zlib1g-dev
+          sudo apt-get install -y make gcc g++ python3 libncurses-dev flex bison ccache
 
-      - name: Setup Toolchains (GCC 14.3 + Clang)
+      - name: Setup GCC 14.3 & Clang
         run: |
-          mkdir -p toolchains/clang-r383902b toolchains/gcc-14.3
+          mkdir -p toolchains/gcc-14.3 toolchains/clang-r383902b
 
           # Download Clang
           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0e9e7035bf8ad42437c6156e5950eab13655b26c/clang-r383902b.tar.gz -O clang.tar.gz
@@ -45,51 +41,20 @@ jobs:
           wget -q https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
           tar -xf gcc.tar.xz -C toolchains/gcc-14.3 --strip-components=1 && rm gcc.tar.xz
 
-          chmod +x toolchains/clang-r383902b/bin/* toolchains/gcc-14.3/bin/*
-
           echo "${{ github.workspace }}/toolchains/clang-r383902b/bin" >> $GITHUB_PATH
           echo "${{ github.workspace }}/toolchains/gcc-14.3/bin" >> $GITHUB_PATH
 
-          # Setup ccache
-          ccache -M 5G
-          ccache -z
-
       - name: Configure kernel
         run: |
-          make -C $KERNEL_ROOT O=$KERNEL_ROOT/out ARCH=$ARCH ${{ inputs.defconfig }} || exit 1
+          make -C $KERNEL_ROOT O=$KERNEL_ROOT/out ARCH=$ARCH ${{ inputs.defconfig }}
 
-      - name: Build kernel + DTBs + DTBOs
+      - name: Build kernel Image
         run: |
-          make -C $KERNEL_ROOT \
-            O=$KERNEL_ROOT/out \
-            -j$(nproc) \
-            ARCH=$ARCH \
-            CC=$CC \
-            LD=ld.lld \
-            CROSS_COMPILE=$CROSS_COMPILE \
-            CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
-            CLANG_TRIPLE=aarch64-none-linux-gnu- \
-            BSP_BUILD_DT_OVERLAY=$BSP_BUILD_DT_OVERLAY \
-            BSP_BUILD_ANDROID_OS=$BSP_BUILD_ANDROID_OS \
-            BSP_BUILD_FAMILY=$BSP_BUILD_FAMILY \
-            Image dtbs dtbo || exit 1
+          make -C $KERNEL_ROOT O=$KERNEL_ROOT/out -j$(nproc) ARCH=$ARCH CC=$CC CROSS_COMPILE=$CROSS_COMPILE Image
 
-      - name: Package DTBs and DTBOs
-        run: |
-          mkdir -p $KERNEL_ROOT/build/dtb
-          DTB_DIR=$KERNEL_ROOT/out/arch/arm64/boot/dts
-          if [ -d "$DTB_DIR" ]; then
-            find "$DTB_DIR" -name "*.dtb" -exec cp {} $KERNEL_ROOT/build/dtb/ \;
-            find "$DTB_DIR" -name "*.dtbo" -exec cp {} $KERNEL_ROOT/build/dtb/ \;
-          fi
-
-      - name: Copy Kernel Image
-        run: |
-          cp $KERNEL_ROOT/out/arch/arm64/boot/Image $KERNEL_ROOT/build/Image
-
-      - name: Upload Kernel Artifacts
+      - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-build-${{ github.run_id }}
-          path: $KERNEL_ROOT/build/*
+          name: kernel-image
+          path: ${{ github.workspace }}/out/arch/arm64/boot/Image
           retention-days: 7
