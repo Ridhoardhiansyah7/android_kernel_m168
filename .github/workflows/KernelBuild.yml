@@ -27,7 +27,9 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y make gcc g++ python3 libncurses-dev flex bison ccache
+          sudo apt-get install -y \
+            make gcc g++ python3 libncurses-dev flex bison ccache \
+            libssl-dev libelf-dev libyaml-dev wget tar
 
       - name: Setup GCC 14.3 & Clang
         run: |
@@ -48,9 +50,10 @@ jobs:
         run: |
           make -C $KERNEL_ROOT O=$KERNEL_ROOT/out ARCH=$ARCH ${{ inputs.defconfig }}
 
-      - name: Build kernel Image
+      - name: Build kernel Image only
         run: |
-          make -C $KERNEL_ROOT O=$KERNEL_ROOT/out -j$(nproc) ARCH=$ARCH CC=$CC CROSS_COMPILE=$CROSS_COMPILE Image
+          make -C $KERNEL_ROOT O=$KERNEL_ROOT/out -j$(nproc) \
+            ARCH=$ARCH CC=$CC CROSS_COMPILE=$CROSS_COMPILE Image
 
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
