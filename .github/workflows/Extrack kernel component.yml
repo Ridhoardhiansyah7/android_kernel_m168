@@ -1,0 +1,34 @@
+
+name: Extract Kernel component
+
+on:
+  workflow_dispatch:
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Find and Copy kernel component
+        run: |
+          mkdir -p output
+
+          if [ -d "sound/soc/sprd" ]; then
+            cp -r sound/soc/sprd output/
+          fi
+          
+          
+
+      - name: Zip result
+        run: |
+          cd output
+            zip -r sprd.zip sprd
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel_modules
+          path: output/*.zip
