@@ -1,9 +1,6 @@
 name: KernelSU Integration
 
 on:
-  push:
-    branches:
-     - KernelSU
   workflow_dispatch:
   
 
@@ -25,7 +22,7 @@ jobs:
         git config --local user.name "Aflahal"
         git config --local user.email "zxx97607@gmail.com"
 
-    - name: Run SukiSU Setup
+    - name: Run KernelSU Setup
       run: |
         curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash
         git rm -r --cached KernelSU || true
