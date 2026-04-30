@@ -1,0 +1,45 @@
+name: KernelSU Integration
+
+on:
+  push:
+    branches:
+     - KernelSU
+  workflow_dispatch:
+  
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        ref: KernelSU
+        fetch-depth: 0
+
+    - name: Configure Git identity
+      run: |
+        git config --local user.name "Aflahal"
+        git config --local user.email "zxx97607@gmail.com"
+
+    - name: Run SukiSU Setup
+      run: |
+        curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash
+        git rm -r --cached KernelSU || true
+        find KernelSU -name ".git" -exec rm -rf {} + || true
+
+
+    - name: Commit and Push
+      run: |
+        git add -f KernelSU/
+        git add .
+        
+        if git diff --cached --quiet; then
+          echo "No changes detected."
+        else
+          git commit -m "kernel: include KernelSU driver"
+          git push origin KernelSU
+        fi
