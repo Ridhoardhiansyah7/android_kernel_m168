@@ -1,22 +1,76 @@
-name: Build Kernel
+name: Kernel Build
 
 on:
+  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
     inputs:
       defconfig:
-        description: 'Kernel defconfig name'
+        description: 'Kernel defconfig name (e.g., a3core_eur_open_defconfig)'
         required: true
         default: 'a3core_eur_open_defconfig'
+      build_kernel_module:
+        description: "set to true if you want to build (.ko) file"
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+
     env:
-      ARCH: arm64
+      # General Build Variables
       KERNEL_ROOT: ${{ github.workspace }}
+      ARCH: arm64
+      TZ: Asia/Jakarta
+      KBUILD_BUILD_USER: 'Ardhiansyah_Aflahal'
+      # Ccache Flags
+      USE_CCACHE: 1
+      CCACHE_EXEC: /usr/bin/ccache
+
+      # Toolchain Paths
+      CLANG_BASE: ${{ github.workspace }}/toolchains/clang-r383902b
+      GCC_64_BASE: ${{ github.workspace }}/toolchains/gcc-14.3
+      GCC_32_BASE: ${{ github.workspace }}/toolchains/gcc-14.3
+
+      # Main Compiler and Cross-Compile Variables
+      CC: "ccache clang"
       CROSS_COMPILE: "${{ github.workspace }}/toolchains/gcc-14.3/bin/aarch64-none-linux-gnu-"
       CROSS_COMPILE_ARM32: "${{ github.workspace }}/toolchains/gcc-14.3/bin/arm-none-linux-gnueabihf-"
-      CC: clang
+
+      # UNISOC Board-Specific Properties (used by (.ko) Makefiles)
+      # Android Build
+      BSP_BOARD_ARCH: arm64
+      BSP_BUILD_DT_OVERLAY: "y"
+      BSP_BUILD_ANDROID_OS: "y"
+      BSP_BUILD_FAMILY: "sharkl3"
+      BSP_BOARD_NAME: "sharkl3"
+      BSP_KERNEL_VERSION: "kernel4.14"
+
+      # PowerVR
+      TARGET_KERNEL_ARCH: "arm64"
+      BSP_SYSTEM_VERSION: "sharkl3"
+      BSP_PRODUCT_NAME: "sharkl3"
+      TARGET_BOARD: "sharkl3"
+      TARGET_BOARD_PLATFORM: "sharkl3"
+      PLATFORM_RELEASE: "11"
+      PLATFORM_VERSION: "11"
+      PLATFORM_VERSION_CODENAME: "R"
+      PLATFORM_CODENAME: "R"
+      BSP_ROOT_DIR: "${{ github.workspace }}"
+      BSP_OUT_PLATFORM: "${{ github.workspace }}/out"
+      BSP_KERNEL_OUT: "${{ github.workspace }}/out"
+      NDK_PLATFORMS_ROOT: "${{ github.workspace }}/prebuilts/ndk/platforms"
+
+      # WCN
+      BSP_BOARD_UNISOC_WCN_SOCKET: "sipc"
+      BSP_BOARD_WLAN_DEVICE: "sc2332"
+
+      # Camera
+      BSP_BOARD_CAMERA_MODULE_ISP_ADAPT_VERSION: "sharkl3"
+      BSP_BOARD_CAMERA_MODULE_ISP_VERSION: "isp2.6"
+      BSP_BOARD_CAMERA_MODULE_CSI_VERSION: "receiver_r2p0"
+      BSP_BOARD_CAMERA_MODULE_CPP_VERSION: "lite_r4p0"
 
     steps:
       - name: Checkout repository
@@ -24,34 +78,66 @@ jobs:
         with:
           submodules: true
 
-      - name: Install dependencies
+      - name: Create build directories
         run: |
+          mkdir -p "${{ github.workspace }}/out" "${{ github.workspace }}/build" "${{ github.workspace }}/toolchains" "${{ github.workspace }}/modules_out"
+
+      - name: Cache Toolchains
+        id: cache-toolchains
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/toolchains
+          key: ${{ runner.os }}-toolchains-v3
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Setup System Dependencies
+        run: |
+          echo "[INFO]: Installing system requirements..."
           sudo apt-get update
-          sudo apt-get install -y \
-            make gcc g++ python3 libncurses-dev flex bison ccache \
-            libssl-dev libelf-dev libyaml-dev wget tar
+          sudo apt-get install -y --fix-missing \
+            git device-tree-compiler lz4 xz-utils zlib1g-dev zip make gcc g++ \
+            python3 python-is-python3 libncurses-dev flex bison gperf libssl-dev \
+            libelf-dev kmod pahole zstd libyaml-dev ccache
 
-      - name: Setup GCC 14.3 & Clang
+      - name: Download and Set up Toolchains
+        if: steps.cache-toolchains.outputs.cache-hit != 'true'
         run: |
-          mkdir -p toolchains/gcc-14.3 toolchains/clang-r383902b
-
-          # Download Clang
+          echo "[INFO] Setting up Toolchains..."
+          cd "${{ github.workspace }}/toolchains"
+          
+          echo "--> Downloading Clang..."
+          mkdir -p clang-r383902b
           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0e9e7035bf8ad42437c6156e5950eab13655b26c/clang-r383902b.tar.gz -O clang.tar.gz
-          tar -xf clang.tar.gz -C toolchains/clang-r383902b && rm clang.tar.gz
-
-          # Download GCC 14.3
+          tar -xf clang.tar.gz -C clang-r383902b && rm clang.tar.gz
+          
+          echo "--> Downloading GCC 14.3..."
+          mkdir -p gcc-14.3
           wget -q https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
-          tar -xf gcc.tar.xz -C toolchains/gcc-14.3 --strip-components=1 && rm gcc.tar.xz
+          tar -xf gcc.tar.xz -C gcc-14.3 --strip-components=1 && rm gcc.tar.xz
 
-          echo "${{ github.workspace }}/toolchains/clang-r383902b/bin" >> $GITHUB_PATH
-          echo "${{ github.workspace }}/toolchains/gcc-14.3/bin" >> $GITHUB_PATH
+          echo "--> Setting permissions..."
+          chmod +x ${{ env.CLANG_BASE }}/bin/*
+          chmod +x ${{ env.GCC_64_BASE }}/bin/*
 
-      - name: Configure kernel
+      - name: Set up PATH and ccache
         run: |
-          make -C $KERNEL_ROOT O=$KERNEL_ROOT/out ARCH=$ARCH ${{ inputs.defconfig }}
+          echo "${{ env.CLANG_BASE }}/bin" >> $GITHUB_PATH
+          echo "${{ env.GCC_64_BASE }}/bin" >> $GITHUB_PATH
+          
+          echo "[INFO] Configuring ccache..."
+          ccache -M 5G
+          ccache -z
 
-      - name: Build kernel Image only
+      - name: Build Kernel, Modules, and DTBs
         run: |
+          echo -e "\n[INFO]: KERNEL BUILD STARTED..!\n"
 
           # Build metadata
           export KBUILD_BUILD_HOST="$(. /etc/os-release && echo ${NAME}-${VERSION_ID})"
@@ -60,13 +146,244 @@ jobs:
           # ignore yaml
           sed -i '/yamltree.o/d' scripts/dtc/Makefile
           sed -i '/dt_to_yaml/d' scripts/dtc/dtc.c
+          
+          make -C "${{ github.workspace }}" O="${{ github.workspace }}/out" ARCH=${{ env.ARCH }} ${{ inputs.defconfig }} || exit 1
+            
+          make -C "${{ github.workspace }}" \
+            O="${{ github.workspace }}/out" \
+            -j$(nproc) \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            ARCH="${{ env.ARCH }}" \
+            CC="${{ env.CC }}" \
+            LD="ld.lld" \
+            AR="llvm-ar" \
+            NM="llvm-nm" \
+            OBJCOPY="llvm-objcopy" \
+            OBJDUMP="llvm-objdump" \
+            STRIP="llvm-strip" \
+            CROSS_COMPILE="${{ env.CROSS_COMPILE }}" \
+            CROSS_COMPILE_ARM32="${{ env.CROSS_COMPILE_ARM32 }}" \
+            CLANG_TRIPLE="aarch64-none-linux-gnu-" \
+            Image modules dtbs || exit 1 
 
-          make -C $KERNEL_ROOT O=$KERNEL_ROOT/out -j$(nproc) \
-            ARCH=$ARCH CC=$CC CROSS_COMPILE=$CROSS_COMPILE Image
+          echo -e "\n[INFO]: KERNEL BUILD FINISHED..!"
+          ccache -s
 
-      - name: Upload Kernel Image
+      - name: Install In-Tree Kernel Modules
+        run: |
+          echo "[INFO]: Installing in-tree kernel modules..."
+          make -C "${{ github.workspace }}/out" \
+            LLVM=1 \
+            ARCH="${{ env.ARCH }}" \
+            CC="${{ env.CC }}" \
+            LD="ld.lld" \
+            CROSS_COMPILE="${{ env.CROSS_COMPILE }}" \
+            CLANG_TRIPLE="aarch64-none-linux-gnu-" \
+            INSTALL_MOD_PATH="${{ github.workspace }}/modules_out" \
+            modules_install || exit 1
+          
+      - name: Build Out-of-Tree Modules
+        if: ${{ inputs.build_kernel_module == true }}
+        run: |
+          echo "[INFO]: Building all out-of-tree modules..."
+          
+          export BSP_KERNEL_PATH="${{ github.workspace }}/out"
+          export BSP_MODULES_OUT="${{ github.workspace }}/out"
+
+          
+          mkdir -p "${{ github.workspace }}/prebuilts/ndk/platforms/android-29/arch-arm64/usr/include"
+   
+          MODULE_LIST="
+          pvrsrvkm:drivers/kernel_modules/gpu/rogue/driver/build/linux/sharkl3_android:NONE
+          chipone-tddi:drivers/kernel_modules/input/touchscreen/icnl9911:NONE
+          flash_ic_ocp8135:drivers/kernel_modules/common/camera/flash/ocp8135b:NONE
+          focaltech_ts:drivers/kernel_modules/input/touchscreen/focaltech_8006:NONE
+          microarray_fp:drivers/kernel_modules/input/fingerprint/microarray:NONE
+          sprd_camera:drivers/kernel_modules/common/camera/core:NONE
+          sprd_cpp:drivers/kernel_modules/common/camera/cpp:NONE
+          sprd_flash_drv:drivers/kernel_modules/common/camera/flash/flash_drv:NONE
+          sprd_fm:drivers/kernel_modules/wcn/fm/driver:NONE
+          sprd_sensor:drivers/kernel_modules/common/camera/sensor:NONE
+          sprdbt_tty:drivers/kernel_modules/wcn/bluetooth/driver:NONE
+          sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE    
+          sunwave_sw9058g_fp:drivers/kernel_modules/input/fingerprint/sunwave_sw9058g:NONE
+          tcs3430:drivers/kernel_modules/input/misc/tcs3430:NONE
+          "
+          export KBUILD_EXTRA_SYMBOLS=""
+
+          for module_info in $MODULE_LIST; do
+            KO_NAME=$(echo "$module_info" | cut -d':' -f1)
+            DRIVER_PATH="${{ github.workspace }}/$(echo "$module_info" | cut -d':' -f2)"
+            EXTRA_ARGS=$(echo "$module_info" | cut -d':' -f3)
+
+            if [ -f "$DRIVER_PATH/Makefile" ]; then
+              echo "--> Building $KO_NAME..."
+
+              MAKE_CMD="make -C \"$DRIVER_PATH\" \
+                LLVM=1 LLVM_IAS=1 ARCH=\"${{ env.ARCH }}\" CC=\"${{ env.CC }}\" LD=\"ld.lld\" AR=\"llvm-ar\" NM=\"llvm-nm\" \
+                OBJCOPY=\"llvm-objcopy\" OBJDUMP=\"llvm-objdump\" STRIP=\"llvm-strip\" \
+                CROSS_COMPILE=\"${{ env.CROSS_COMPILE }}\" CROSS_COMPILE_ARM32=\"${{ env.CROSS_COMPILE_ARM32 }}\" \
+                CLANG_TRIPLE=\"aarch64-none-linux-gnu-\" \
+                BSP_BUILD_ANDROID_OS=\"${{ env.BSP_BUILD_ANDROID_OS }}\" BSP_BUILD_FAMILY=\"${{ env.BSP_BUILD_FAMILY }}\" \
+                BSP_BUILD_DT_OVERLAY=\"${{ env.BSP_BUILD_DT_OVERLAY }}\" \
+                BSP_KERNEL_VERSION=\"${{ env.BSP_KERNEL_VERSION }}\" \
+                BSP_BOARD_UNISOC_WCN_SOCKET=\"${{ env.BSP_BOARD_UNISOC_WCN_SOCKET }}\" \
+                BSP_BOARD_WLAN_DEVICE=\"${{ env.BSP_BOARD_WLAN_DEVICE }}\" \
+                BSP_BOARD_CAMERA_MODULE_ISP_ADAPT_VERSION=\"${{ env.BSP_BOARD_CAMERA_MODULE_ISP_ADAPT_VERSION }}\" \
+                BSP_BOARD_CAMERA_MODULE_ISP_VERSION=\"${{ env.BSP_BOARD_CAMERA_MODULE_ISP_VERSION }}\" \
+                BSP_BOARD_CAMERA_MODULE_CSI_VERSION=\"${{ env.BSP_BOARD_CAMERA_MODULE_CSI_VERSION }}\" \
+                BSP_BOARD_CAMERA_MODULE_CPP_VERSION=\"${{ env.BSP_BOARD_CAMERA_MODULE_CPP_VERSION }}\" \
+                modules"
+
+             if [ "$KO_NAME" = "pvrsrvkm" ]; then
+              MAKE_CMD="$MAKE_CMD \
+              TARGET_BOARD_PLATFORM=\"${{ env.TARGET_BOARD_PLATFORM }}\" \
+              TARGET_BOARD=\"${{ env.TARGET_BOARD }}\" \
+              TARGET_KERNEL_ARCH=\"${{ env.TARGET_KERNEL_ARCH }}\" \
+              BSP_SYSTEM_VERSION=\"${{ env.BSP_SYSTEM_VERSION }}\" \
+              BSP_PRODUCT_NAME=\"${{ env.BSP_PRODUCT_NAME }}\" \
+              PLATFORM_VERSION=\"${{ env.PLATFORM_VERSION }}\" \
+              PLATFORM_VERSION_CODENAME=\"${{ env.PLATFORM_VERSION_CODENAME }}\" \
+              BSP_ROOT_DIR=\"${{ env.BSP_ROOT_DIR }}\" \
+              BSP_OUT_PLATFORM=\"${{ env.BSP_OUT_PLATFORM }}\" \
+              BSP_KERNEL_OUT=\"${{ env.BSP_KERNEL_OUT }}\" \
+              BSP_KERNEL_CROSS_COMPILE=\"${{ env.CROSS_COMPILE }}\" \
+               KCFLAGS=\"-Wno-error=cast-function-type -Wno-error=enum-conversion -Wno-error=missing-field-initializers\""
+              fi
+
+              if [ -n "$KBUILD_EXTRA_SYMBOLS" ]; then
+                MAKE_CMD="$MAKE_CMD KBUILD_EXTRA_SYMBOLS=\"$KBUILD_EXTRA_SYMBOLS\""
+              fi
+
+              if [ "$EXTRA_ARGS" != "NONE" ]; then
+                MAKE_CMD="$MAKE_CMD $EXTRA_ARGS"
+              fi
+
+              eval $MAKE_CMD
+
+              if [ "$KO_NAME" = "pvrsrvkm" ]; then
+               KO_FILE="${{ github.workspace }}/out/sharkl3/obj/modules/pvrsrvkm/target_aarch64/kbuild/pvrsrvkm.ko"
+               DEST_MODULE_DIR="${{ github.workspace }}/out/pvrsrvkm"
+               mkdir -p "$DEST_MODULE_DIR"
+               cp "$KO_FILE" "$DEST_MODULE_DIR/"
+               echo "--> pvrsrvkm.ko copied to $DEST_MODULE_DIR"
+               fi
+
+
+              if [ -f "$BSP_MODULES_OUT/$KO_NAME/Module.symvers" ]; then
+                KBUILD_EXTRA_SYMBOLS="$KBUILD_EXTRA_SYMBOLS $BSP_MODULES_OUT/$KO_NAME/Module.symvers"
+              fi
+            else
+              echo "--> Makefile not found for $KO_NAME at $DRIVER_PATH, skipping."
+            fi
+          done
+
+      - name: Install Out-of-Tree Modules and Generate Dependencies
+        if: ${{ inputs.build_kernel_module == true }}
+        run: |
+          echo "[INFO]: Installing all out-of-tree modules..."
+          
+          export BSP_KERNEL_PATH="${{ github.workspace }}/out"
+          export BSP_MODULES_OUT="${{ github.workspace }}/out"
+          
+          MODULE_LIST="
+          pvrsrvkm:drivers/kernel_modules/gpu/rogue/driver/build/linux/sharkl3_android:NONE
+          chipone-tddi:drivers/kernel_modules/input/touchscreen/icnl9911:NONE
+          flash_ic_ocp8135:drivers/kernel_modules/common/camera/flash/ocp8135b:NONE
+          focaltech_ts:drivers/kernel_modules/input/touchscreen/focaltech_8006:NONE
+          microarray_fp:drivers/kernel_modules/input/fingerprint/microarray:NONE
+          sprd_camera:drivers/kernel_modules/common/camera/core:NONE
+          sprd_cpp:drivers/kernel_modules/common/camera/cpp:NONE
+          sprd_flash_drv:drivers/kernel_modules/common/camera/flash/flash_drv:NONE
+          sprd_fm:drivers/kernel_modules/wcn/fm/driver:NONE
+          sprd_sensor:drivers/kernel_modules/common/camera/sensor:NONE
+          sprdbt_tty:drivers/kernel_modules/wcn/bluetooth/driver:NONE
+          sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE    
+          sunwave_sw9058g_fp:drivers/kernel_modules/input/fingerprint/sunwave_sw9058g:NONE
+          tcs3430:drivers/kernel_modules/input/misc/tcs3430:NONE
+          "
+
+          for module_info in $MODULE_LIST; do
+            KO_NAME=$(echo "$module_info" | cut -d':' -f1)
+            DRIVER_PATH="${{ github.workspace }}/$(echo "$module_info" | cut -d':' -f2)"
+
+  
+            if [ "$KO_NAME" = "pvrsrvkm" ]; then
+             INSTALL_PATH="${{ github.workspace }}/out/sharkl3/obj/modules/pvrsrvkm/target_aarch64/kbuild"
+            else
+             INSTALL_PATH="$BSP_MODULES_OUT/$KO_NAME"
+            fi
+
+            if [ -d "$INSTALL_PATH" ]; then
+             make -C "${{ github.workspace }}/out" M="$INSTALL_PATH" \
+             LLVM=1 \
+             ARCH="${{ env.ARCH }}" \
+             CC="${{ env.CC }}" \
+             LD="ld.lld" \
+             CROSS_COMPILE="${{ env.CROSS_COMPILE }}" \
+             CLANG_TRIPLE="aarch64-none-linux-gnu-" \
+             INSTALL_MOD_PATH="${{ github.workspace }}/modules_out" \
+             modules_install
+             echo "--> $KO_NAME driver installed."
+            else
+            echo "--> $KO_NAME install path not found, skipping."
+            fi
+          done
+
+          echo "[INFO]: Generating final module dependency files..."
+          KERNEL_VERSION=$(cat ${{ github.workspace }}/out/include/generated/utsrelease.h | awk '{print $3}' | tr -d '"')
+          touch "${{ github.workspace }}/modules_out/lib/modules/$KERNEL_VERSION/modules.builtin.modinfo"
+          depmod -a -b "${{ github.workspace }}/modules_out" "$KERNEL_VERSION"
+
+      # <--- ADDED SECTION: Package the DTB and DTBO files --->
+      - name: Package DTB and DTBO files
+        run: |
+          echo "[INFO]: Packaging DTB and DTBO files..."
+          mkdir -p "${{ github.workspace }}/build/dtb"
+          
+          # The standard location for UNISOC DTBs is arch/arm64/boot/dts/sprd
+          DTB_SOURCE_DIR="${{ github.workspace }}/out/arch/${{ env.ARCH }}/boot/dts/sprd"
+          DTB_DEST_DIR="${{ github.workspace }}/build/dtb"
+          
+          if [ -d "$DTB_SOURCE_DIR" ]; then
+              echo "--> Found DTB directory at $DTB_SOURCE_DIR"
+              find "$DTB_SOURCE_DIR" -name "*.dtb" -exec cp {} "$DTB_DEST_DIR/" \;
+              find "$DTB_SOURCE_DIR" -name "*.dtbo" -exec cp {} "$DTB_DEST_DIR/" \;
+          else
+              echo "::warning:: Standard UNISOC DTB directory not found. Searching all of boot/dts..."
+              find "${{ github.workspace }}/out/arch/${{ env.ARCH }}/boot/dts" -name "*.dtb" -exec cp {} "$DTB_DEST_DIR/" \;
+              find "${{ github.workspace }}/out/arch/${{ env.ARCH }}/boot/dts" -name "*.dtbo" -exec cp {} "$DTB_DEST_DIR/" \;
+          fi
+
+          if [ -z "$(ls -A $DTB_DEST_DIR)" ]; then
+              echo "::error::No DTB or DTBO files were found after the build. Check the build logs."
+              exit 1
+          else
+              echo "--> DTB/DTBO files successfully packaged."
+              ls -lR $DTB_DEST_DIR
+          fi
+
+      - name: Package Kernel and All Modules
+        run: |
+          echo "[INFO]: Packaging kernel and module artifacts..."
+          cp "${{ github.workspace }}/out/arch/${{ env.ARCH }}/boot/Image" "${{ github.workspace }}/build/Image"
+          
+          cd "${{ github.workspace }}/modules_out"
+          
+          echo "[INFO]: Removing 'source' and 'build' symlinks to prevent zip recursion..."
+          find . -type l -name "source" -delete
+          find . -type l -name "build" -delete
+          
+          echo "[INFO]: Zipping all modules..."
+          zip -r9 "${{ github.workspace }}/build/modules-${{ github.run_id }}.zip" .
+          
+          echo "Kernel Image, Modules ZIP, and DTBs are ready in the 'build' directory."
+          ls -lR ${{ github.workspace }}/build
+
+      - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-image
-          path: ${{ github.workspace }}/out/arch/arm64/boot/Image
+          name: kernel-build-${{ github.run_id }}
+          path: ${{ github.workspace }}/build/*
           retention-days: 7
