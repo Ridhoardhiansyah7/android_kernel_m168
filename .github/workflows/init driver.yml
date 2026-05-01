@@ -1,9 +1,6 @@
 name: copy drivers source
 
 on:
-  push:
-   branches:
-      - drivers
   workflow_dispatch:
   
 
