@@ -195,20 +195,9 @@ jobs:
           mkdir -p "${{ github.workspace }}/prebuilts/ndk/platforms/android-29/arch-arm64/usr/include"
    
           MODULE_LIST="
-          pvrsrvkm:drivers/kernel_modules/gpu/rogue/driver/build/linux/sharkl3_android:NONE
-          chipone-tddi:drivers/kernel_modules/input/touchscreen/icnl9911:NONE
-          flash_ic_ocp8135:drivers/kernel_modules/common/camera/flash/ocp8135b:NONE
-          focaltech_ts:drivers/kernel_modules/input/touchscreen/focaltech_8006:NONE
-          microarray_fp:drivers/kernel_modules/input/fingerprint/microarray:NONE
-          sprd_camera:drivers/kernel_modules/common/camera/core:NONE
-          sprd_cpp:drivers/kernel_modules/common/camera/cpp:NONE
-          sprd_flash_drv:drivers/kernel_modules/common/camera/flash/flash_drv:NONE
           sprd_fm:drivers/kernel_modules/wcn/fm/driver:NONE
-          sprd_sensor:drivers/kernel_modules/common/camera/sensor:NONE
           sprdbt_tty:drivers/kernel_modules/wcn/bluetooth/driver:NONE
           sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE    
-          sunwave_sw9058g_fp:drivers/kernel_modules/input/fingerprint/sunwave_sw9058g:NONE
-          tcs3430:drivers/kernel_modules/input/misc/tcs3430:NONE
           "
           export KBUILD_EXTRA_SYMBOLS=""
 
@@ -230,10 +219,6 @@ jobs:
                 BSP_KERNEL_VERSION=\"${{ env.BSP_KERNEL_VERSION }}\" \
                 BSP_BOARD_UNISOC_WCN_SOCKET=\"${{ env.BSP_BOARD_UNISOC_WCN_SOCKET }}\" \
                 BSP_BOARD_WLAN_DEVICE=\"${{ env.BSP_BOARD_WLAN_DEVICE }}\" \
-                BSP_BOARD_CAMERA_MODULE_ISP_ADAPT_VERSION=\"${{ env.BSP_BOARD_CAMERA_MODULE_ISP_ADAPT_VERSION }}\" \
-                BSP_BOARD_CAMERA_MODULE_ISP_VERSION=\"${{ env.BSP_BOARD_CAMERA_MODULE_ISP_VERSION }}\" \
-                BSP_BOARD_CAMERA_MODULE_CSI_VERSION=\"${{ env.BSP_BOARD_CAMERA_MODULE_CSI_VERSION }}\" \
-                BSP_BOARD_CAMERA_MODULE_CPP_VERSION=\"${{ env.BSP_BOARD_CAMERA_MODULE_CPP_VERSION }}\" \
                 modules"
 
              if [ "$KO_NAME" = "pvrsrvkm" ]; then
@@ -288,20 +273,9 @@ jobs:
           export BSP_MODULES_OUT="${{ github.workspace }}/out"
           
           MODULE_LIST="
-          pvrsrvkm:drivers/kernel_modules/gpu/rogue/driver/build/linux/sharkl3_android:NONE
-          chipone-tddi:drivers/kernel_modules/input/touchscreen/icnl9911:NONE
-          flash_ic_ocp8135:drivers/kernel_modules/common/camera/flash/ocp8135b:NONE
-          focaltech_ts:drivers/kernel_modules/input/touchscreen/focaltech_8006:NONE
-          microarray_fp:drivers/kernel_modules/input/fingerprint/microarray:NONE
-          sprd_camera:drivers/kernel_modules/common/camera/core:NONE
-          sprd_cpp:drivers/kernel_modules/common/camera/cpp:NONE
-          sprd_flash_drv:drivers/kernel_modules/common/camera/flash/flash_drv:NONE
           sprd_fm:drivers/kernel_modules/wcn/fm/driver:NONE
-          sprd_sensor:drivers/kernel_modules/common/camera/sensor:NONE
           sprdbt_tty:drivers/kernel_modules/wcn/bluetooth/driver:NONE
           sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE    
-          sunwave_sw9058g_fp:drivers/kernel_modules/input/fingerprint/sunwave_sw9058g:NONE
-          tcs3430:drivers/kernel_modules/input/misc/tcs3430:NONE
           "
 
           for module_info in $MODULE_LIST; do
