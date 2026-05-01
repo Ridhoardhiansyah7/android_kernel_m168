@@ -1,0 +1,45 @@
+name: copy drivers source
+
+on:
+  push:
+   branches:
+      - drivers
+  workflow_dispatch:
+  
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        ref: drivers
+        fetch-depth: 0
+
+    - name: Configure Git identity
+      run: |
+        git config --local user.name "Aflahal"
+        git config --local user.email "zxx97607@gmail.com"
+
+    - name: Run import drivers
+      run: |
+       git clone --depth=1 https://github.com/Ridhoardhiansyah7/realme_C11-2021_Narzo-50i-AndroidR-kernel-source.git old_kernel
+       rm -rf drivers/kernel_modules
+       cp -r old_kernel/drivers/kernel_modules drivers/
+       rm -rf old_kernel
+
+
+    - name: Commit and Push
+      run: |
+        git add .
+        
+        if git diff --cached --quiet; then
+          echo "No changes detected."
+        else
+          git commit -m "kernel: import drivers source from c11 2021"
+          git push origin drivers
+        fi
