@@ -91,13 +91,13 @@ fun createRootShell(globalMnt: Boolean = false): Shell {
     }
 }
 
-fun execKsud(args: String, newShell: Boolean = false): Boolean {
+fun execKsud(args: String, newShell: Boolean = false, globalMnt: Boolean = false): Boolean {
     return if (newShell) {
-        withNewRootShell {
+        withNewRootShell(globalMnt = globalMnt) {
             ShellUtils.fastCmdResult(this, "${getKsuDaemonPath()} $args")
         }
     } else {
-        ShellUtils.fastCmdResult(getRootShell(), "${getKsuDaemonPath()} $args")
+        ShellUtils.fastCmdResult(getRootShell(globalMnt), "${getKsuDaemonPath()} $args")
     }
 }
 
@@ -118,9 +118,8 @@ suspend fun getFeaturePersistValue(feature: String): Long? = withContext(Dispatc
 
 fun install() {
     val start = SystemClock.elapsedRealtime()
-    val magiskboot = File(ksuApp.applicationInfo.nativeLibraryDir, "libmagiskboot.so").absolutePath
     val libadbroot = File(ksuApp.applicationInfo.nativeLibraryDir, "libadbroot.so").absolutePath
-    val result = execKsud("install --magiskboot $magiskboot --libadbroot $libadbroot", true)
+    val result = execKsud("install --libadbroot $libadbroot --data-path ${ksuApp.applicationInfo.deviceProtectedDataDir}", true)
     Log.w(TAG, "install result: $result, cost: ${SystemClock.elapsedRealtime() - start}ms")
 }
 
@@ -216,8 +215,6 @@ fun flashModule(
 fun runModuleAction(
     moduleId: String, onStdout: (String) -> Unit, onStderr: (String) -> Unit
 ): Boolean {
-    val shell = createRootShell(true)
-
     val stdoutCallback: CallbackList<String?> = object : CallbackList<String?>() {
         override fun onAddElement(s: String?) {
             onStdout(s ?: "")
@@ -230,8 +227,11 @@ fun runModuleAction(
         }
     }
 
-    val result = shell.newJob().add("${getKsuDaemonPath()} module action $moduleId")
-        .to(stdoutCallback, stderrCallback).exec()
+    val result = withNewRootShell(true) {
+        newJob().add("${getKsuDaemonPath()} module action $moduleId")
+            .to(stdoutCallback, stderrCallback).exec()
+    }
+
     Log.i("KernelSU", "Module runAction result: $result")
 
     return result.isSuccess
@@ -240,16 +240,14 @@ fun runModuleAction(
 fun restoreBoot(
     onStdout: (String) -> Unit, onStderr: (String) -> Unit
 ): FlashResult {
-    val magiskboot = File(ksuApp.applicationInfo.nativeLibraryDir, "libmagiskboot.so")
-    val result = flashWithIO("${getKsuDaemonPath()} boot-restore -f --magiskboot $magiskboot", onStdout, onStderr)
+    val result = flashWithIO("${getKsuDaemonPath()} boot-restore -f", onStdout, onStderr)
     return FlashResult(result)
 }
 
 fun uninstallPermanently(
     onStdout: (String) -> Unit, onStderr: (String) -> Unit
 ): FlashResult {
-    val magiskboot = File(ksuApp.applicationInfo.nativeLibraryDir, "libmagiskboot.so")
-    val result = flashWithIO("${getKsuDaemonPath()} uninstall --magiskboot $magiskboot --package-name ${BuildConfig.APPLICATION_ID}", onStdout, onStderr)
+    val result = flashWithIO("${getKsuDaemonPath()} uninstall --package-name ${BuildConfig.APPLICATION_ID}", onStdout, onStderr)
     return FlashResult(result)
 }
 
@@ -272,6 +270,7 @@ fun installBoot(
     partition: String?,
     allowShell: Boolean,
     enableAdb: Boolean,
+    forceBackup: Boolean,
     onStdout: (String) -> Unit,
     onStderr: (String) -> Unit,
 ): FlashResult {
@@ -288,8 +287,7 @@ fun installBoot(
         }
     }
 
-    val magiskboot = File(ksuApp.applicationInfo.nativeLibraryDir, "libmagiskboot.so")
-    var cmd = "boot-patch --magiskboot ${magiskboot.absolutePath}"
+    var cmd = "boot-patch"
 
     cmd += if (bootFile == null) {
         // no boot.img, use -f to flash
@@ -308,6 +306,10 @@ fun installBoot(
 
     if (ota) {
         cmd += " -u"
+    }
+
+    if (forceBackup) {
+        cmd += " --backup"
     }
 
     var lkmFile: File? = null
@@ -360,7 +362,7 @@ fun installBoot(
 
 fun reboot(reason: String = "") {
     if (reason == "soft_reboot") {
-        execKsud("soft-reboot", true)
+        execKsud("soft-reboot", true, true)
         return
     }
     val shell = getRootShell()
@@ -471,8 +473,8 @@ fun getAppProfileTemplate(id: String): String {
 
 fun setAppProfileTemplate(id: String, template: String): Boolean {
     val shell = getRootShell()
-    val escapedTemplate = template.replace("\"", "\\\"")
-    val cmd = """${getKsuDaemonPath()} profile set-template "$id" "$escapedTemplate'""""
+    val escapedTemplate = template.replace("'", "'\\''")
+    val cmd = """${getKsuDaemonPath()} profile set-template "$id" '$escapedTemplate'"""
     return shell.newJob().add(cmd)
         .to(ArrayList(), null).exec().isSuccess
 }

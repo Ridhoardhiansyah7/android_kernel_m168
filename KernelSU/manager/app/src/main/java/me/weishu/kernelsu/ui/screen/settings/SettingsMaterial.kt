@@ -22,17 +22,15 @@ import androidx.compose.material.icons.filled.ElectricalServices
 import androidx.compose.material.icons.filled.Fence
 import androidx.compose.material.icons.filled.FolderDelete
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.RemoveCircle
 import androidx.compose.material.icons.filled.RemoveModerator
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.UploadFile
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
@@ -51,13 +49,15 @@ import androidx.compose.ui.unit.dp
 import me.weishu.kernelsu.R
 import me.weishu.kernelsu.ui.UiMode
 import me.weishu.kernelsu.ui.component.KsuIsValid
+import me.weishu.kernelsu.ui.component.material.ExpressiveScaffold
 import me.weishu.kernelsu.ui.component.material.SegmentedColumn
 import me.weishu.kernelsu.ui.component.material.SegmentedDropdownItem
 import me.weishu.kernelsu.ui.component.material.SegmentedListItem
 import me.weishu.kernelsu.ui.component.material.SegmentedSwitchItem
 import me.weishu.kernelsu.ui.component.material.SendLogBottomSheet
+import me.weishu.kernelsu.ui.component.material.SnackBarHost
+import me.weishu.kernelsu.ui.component.material.expressiveTopAppBarColors
 import me.weishu.kernelsu.ui.component.uninstalldialog.UninstallDialog
-import me.weishu.kernelsu.ui.util.LocalSnackbarHost
 
 /**
  * @author weishu
@@ -70,7 +70,7 @@ fun SettingPagerMaterial(
     bottomInnerPadding: Dp,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-    val snackBarHost = LocalSnackbarHost.current
+    val snackBarHost = remember { SnackbarHostState() }
     val showUninstallDialog = rememberSaveable { mutableStateOf(false) }
     var showBottomSheet by remember { mutableStateOf(false) }
 
@@ -79,11 +79,11 @@ fun SettingPagerMaterial(
         onDismissRequest = { showUninstallDialog.value = false }
     )
 
-    Scaffold(
+    ExpressiveScaffold(
         topBar = {
             TopBar(scrollBehavior = scrollBehavior)
         },
-        snackbarHost = { SnackbarHost(snackBarHost) },
+        snackbarHost = { SnackBarHost(hostState = snackBarHost, modifier = Modifier.padding(bottom = bottomInnerPadding)) },
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
     ) { paddingValues ->
         Column(
@@ -92,10 +92,9 @@ fun SettingPagerMaterial(
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .verticalScroll(rememberScrollState())
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
             KsuIsValid {
                 SegmentedColumn(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
                     content = listOf(
                         {
                             SegmentedSwitchItem(
@@ -120,7 +119,7 @@ fun SettingPagerMaterial(
             }
 
             SegmentedColumn(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
                 content = buildList {
                     add {
                         SegmentedDropdownItem(
@@ -152,7 +151,7 @@ fun SettingPagerMaterial(
             val profileTemplate = stringResource(id = R.string.settings_profile_template)
             KsuIsValid {
                 SegmentedColumn(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
                     content = listOf {
                         SegmentedListItem(
                             onClick = actions.onOpenProfileTemplate,
@@ -178,7 +177,7 @@ fun SettingPagerMaterial(
                 )
 
                 SegmentedColumn(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
                     content = listOf(
                         {
                             val suSummary = when (uiState.suCompatStatus) {
@@ -209,6 +208,21 @@ fun SettingPagerMaterial(
                                 enabled = uiState.kernelUmountStatus == "supported",
                                 checked = uiState.isKernelUmountEnabled,
                                 onCheckedChange = actions.onSetKernelUmountEnabled
+                            )
+                        },
+                        {
+                            val selinuxHideSummary = when (uiState.selinuxHideStatus) {
+                                "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
+                                "managed" -> stringResource(id = R.string.feature_status_managed_summary)
+                                else -> stringResource(id = R.string.settings_selinux_hide_summary)
+                            }
+                            SegmentedSwitchItem(
+                                icon = Icons.Filled.Policy,
+                                title = stringResource(id = R.string.settings_selinux_hide),
+                                summary = selinuxHideSummary,
+                                enabled = uiState.selinuxHideStatus == "supported",
+                                checked = uiState.isSelinuxHideEnabled,
+                                onCheckedChange = actions.onSetSelinuxHideEnabled
                             )
                         },
                         {
@@ -245,7 +259,7 @@ fun SettingPagerMaterial(
                 )
 
                 SegmentedColumn(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
                     content = listOf(
                         {
                             SegmentedSwitchItem(
@@ -281,7 +295,7 @@ fun SettingPagerMaterial(
 
             if (uiState.isLkmMode) {
                 SegmentedColumn(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
                     content = listOf(
                         {
                             val uninstall = stringResource(id = R.string.settings_uninstall)
@@ -297,7 +311,7 @@ fun SettingPagerMaterial(
             }
 
             SegmentedColumn(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
                 content = listOf(
                     {
                         SegmentedListItem(
@@ -325,27 +339,27 @@ fun SettingPagerMaterial(
                     }
                 )
             )
+
             Spacer(modifier = Modifier.height(8.dp))
 
             if (showBottomSheet) {
-                SendLogBottomSheet { showBottomSheet = false }
+                SendLogBottomSheet(
+                    onDismiss = { showBottomSheet = false },
+                    snackbarHostState = snackBarHost,
+                )
             }
             Spacer(modifier = Modifier.height(bottomInnerPadding))
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun TopBar(
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
     LargeFlexibleTopAppBar(
         title = { Text(stringResource(R.string.settings)) },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            scrolledContainerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = expressiveTopAppBarColors(),
         windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         scrollBehavior = scrollBehavior
     )
