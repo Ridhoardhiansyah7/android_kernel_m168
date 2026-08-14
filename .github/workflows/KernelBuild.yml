@@ -195,6 +195,7 @@ jobs:
           mkdir -p "${{ github.workspace }}/prebuilts/ndk/platforms/android-29/arch-arm64/usr/include"
    
           MODULE_LIST="
+          pvrsrvkm:drivers/kernel_modules/gpu/rogue/driver/build/linux/sharkl3_android:NONE
           sprd_fm:drivers/kernel_modules/wcn/fm/driver:NONE
           sprdbt_tty:drivers/kernel_modules/wcn/bluetooth/driver:NONE
           sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE    
@@ -273,6 +274,7 @@ jobs:
           export BSP_MODULES_OUT="${{ github.workspace }}/out"
           
           MODULE_LIST="
+          pvrsrvkm:drivers/kernel_modules/gpu/rogue/driver/build/linux/sharkl3_android:NONE
           sprd_fm:drivers/kernel_modules/wcn/fm/driver:NONE
           sprdbt_tty:drivers/kernel_modules/wcn/bluetooth/driver:NONE
           sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE    
