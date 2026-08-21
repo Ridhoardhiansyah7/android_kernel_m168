@@ -198,7 +198,11 @@ jobs:
           pvrsrvkm:drivers/kernel_modules/gpu/rogue/driver/build/linux/sharkl3_android:NONE
           sprd_fm:drivers/kernel_modules/wcn/fm/driver:NONE
           sprdbt_tty:drivers/kernel_modules/wcn/bluetooth/driver:NONE
-          sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE    
+          sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE
+          sprd_camera:drivers/kernel_modules/common/camera/core:NONE
+          sprd_cpp:drivers/kernel_modules/common/camera/cpp:NONE
+          sprd_flash_drv:drivers/kernel_modules/common/camera/flash/flash_drv:NONE
+          sprd_sensor:drivers/kernel_modules/common/camera/sensor:NONE
           "
           export KBUILD_EXTRA_SYMBOLS=""
 
@@ -277,7 +281,11 @@ jobs:
           pvrsrvkm:drivers/kernel_modules/gpu/rogue/driver/build/linux/sharkl3_android:NONE
           sprd_fm:drivers/kernel_modules/wcn/fm/driver:NONE
           sprdbt_tty:drivers/kernel_modules/wcn/bluetooth/driver:NONE
-          sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE    
+          sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE
+          sprd_camera:drivers/kernel_modules/common/camera/core:NONE
+          sprd_cpp:drivers/kernel_modules/common/camera/cpp:NONE
+          sprd_flash_drv:drivers/kernel_modules/common/camera/flash/flash_drv:NONE
+          sprd_sensor:drivers/kernel_modules/common/camera/sensor:NONE
           "
 
           for module_info in $MODULE_LIST; do
