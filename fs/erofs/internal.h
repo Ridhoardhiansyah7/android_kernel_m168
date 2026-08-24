@@ -41,6 +41,20 @@ __printf(3, 4) void _erofs_info(struct super_block *sb,
 /* EROFS_SUPER_MAGIC_V1 to represent the whole file system */
 #define EROFS_SUPER_MAGIC   EROFS_SUPER_MAGIC_V1
 
+#ifndef atomic_cond_read_relaxed
+#define atomic_cond_read_relaxed(v, c) \
+({ \
+	int VAL; \
+	for (;;) { \
+		VAL = atomic_read(v); \
+		if (c) \
+			break; \
+		cpu_relax(); \
+	} \
+	VAL; \
+})
+#endif
+
 typedef u64 erofs_nid_t;
 typedef u64 erofs_off_t;
 /* data type for filesystem-wide blocks number */
