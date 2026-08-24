@@ -55,6 +55,11 @@ __printf(3, 4) void _erofs_info(struct super_block *sb,
 })
 #endif
 
+/* EROFS_SUPER_MAGIC_V1 is defined since v5.4 */
+#ifndef EROFS_SUPER_MAGIC_V1
+#define EROFS_SUPER_MAGIC_V1 0xE0F5E1E2
+#endif
+
 typedef u64 erofs_nid_t;
 typedef u64 erofs_off_t;
 /* data type for filesystem-wide blocks number */
