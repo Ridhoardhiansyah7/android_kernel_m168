@@ -1,0 +1,51 @@
+name: EROFS 4.14 Integration
+
+on:
+  workflow_dispatch:
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        ref: 4.14.199-erofs
+        fetch-depth: 0
+
+    - name: Configure Git identity
+      run: |
+        git config --local user.name "Aflahal"
+        git config --local user.email "zxx97607@gmail.com"
+
+    - name: Fetch EROFS 4.14 Source
+      run: |
+        mkdir -p fs
+        rm -rf fs/erofs
+
+        echo "Cloning souce..."
+        git clone --filter=blob:none --no-checkout --depth 1 -b stable https://github.com/ravindu644/android_kernel_beyond2.git temp_repo
+        
+        cd temp_repo
+        git sparse-checkout set fs/erofs
+
+        git checkout
+        cd ..
+
+        mv temp_repo/fs/erofs fs/erofs
+        rm -rf temp_repo
+
+    - name: Commit and Push
+      run: |
+        git add fs/erofs
+        
+        if git diff --cached --quiet; then
+          echo "No available changes"
+        else
+          git commit -m "fs: import bakcport EROFS for 4.14.y"
+          
+          git push origin 4.14.199-erofs
+        fi
