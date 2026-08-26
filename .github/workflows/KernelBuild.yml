@@ -7,6 +7,12 @@ on:
         description: 'Kernel defconfig name'
         required: true
         default: 'a3core_eur_open_defconfig'
+      isPermissive:
+        description: 'Is build permissive'
+        required: true
+        type: boolean
+        default: false
+         
 
 jobs:
   build:
@@ -50,7 +56,19 @@ jobs:
         run: |
           make -C $KERNEL_ROOT O=$KERNEL_ROOT/out ARCH=$ARCH ${{ inputs.defconfig }}
 
-      - name: Build kernel Image only
+      - name: Patch permissive
+        if: "${{ inputs.isPermissive == true }}"
+        run: |
+          # patch selinuxfs and hooks to force permissive
+          TARGET_BRANCH="KernelSU-permissive"
+          git fetch origin $TARGET_BRANCH
+          
+          git checkout FETCH_HEAD -- security/selinux/hooks.c
+          git checkout FETCH_HEAD -- security/selinux/selinuxfs.c
+          
+          echo "Patch successfuly from $TARGET_BRANCH branch"
+          
+      - name: Build kernel
         run: |
 
           # Build metadata
