@@ -91,7 +91,7 @@ jobs:
         if: "${{ inputs.isRepackToBootImage == true }}"
         run: |
           echo "Downloading Magisk..."
-          wget -q https://github.com/topjohnwu/Magisk/releases/download/v30.7/Magisk-v30.7.apk -O magisk.zip
+          wget -q https://github.com/topjohnwu/Magisk/releases/download/v27.0/Magisk-v27.0.apk -O magisk.zip
           
           echo "Extracting magiskboot..."
           unzip -p magisk.zip lib/x86_64/libmagiskboot.so > magiskboot
