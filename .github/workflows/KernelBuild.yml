@@ -100,22 +100,20 @@ jobs:
           cd AK3
           
           sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-          sed -i 's/kernel.string=.*/kernel.string=A032F-erofs-kernel by Ridho/g' anykernel.sh
+          sed -i 's/kernel.string=.*/kernel.string=A032F-erofs-kernel by Aflahal/g' anykernel.sh
           sed -i 's|BLOCK=.*|BLOCK=auto;|g' anykernel.sh
           sed -i 's/IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=0;/g' anykernel.sh
           sed -i '/# init.rc/,/append_file fstab.tuna.*/d' anykernel.sh
           
-          echo "Zipping AnyKernel3..."
-          zip -r9 ../AnyKernel3-Flashable.zip * -x .git README.md *placeholder
-          
-          echo "Done building flashable zip!"
+          echo "Zipping AnyKernel3..."          
+          echo "Done!"
 
       - name: Upload AnyKernel3 Zip
         if: "${{ inputs.isFlashableZip == true }}"
         uses: actions/upload-artifact@v4
         with:
           name: AnyKernel3-Flashable
-          path: AnyKernel3-Flashable.zip
+          path: AK3/
           retention-days: 7
 
       - name: Upload Kernel Image
