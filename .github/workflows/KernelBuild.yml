@@ -8,10 +8,15 @@ on:
         required: true
         default: 'a3core_eur_open_defconfig'
       isPermissive:
-        description: 'Is build permissive'
+        description: 'check this option to force permissive kernel'
         required: true
         type: boolean
         default: false
+      isRepackToBootImage:
+        description: 'check this option to repack boot.img'
+        required: true
+        type: boolean
+        default: true
          
 
 jobs:
@@ -61,7 +66,7 @@ jobs:
         run: |
           # patch selinuxfs and hooks to force permissive
           TARGET_BRANCH="KernelSU-permissive"
-          git fetch origin $TARGET_BRANCH
+          git fetch --depth 1 origin $TARGET_BRANCH
           
           git checkout FETCH_HEAD -- security/selinux/hooks.c
           git checkout FETCH_HEAD -- security/selinux/selinuxfs.c
@@ -82,7 +87,42 @@ jobs:
           make -C $KERNEL_ROOT O=$KERNEL_ROOT/out -j$(nproc) \
             ARCH=$ARCH CC=$CC CROSS_COMPILE=$CROSS_COMPILE Image
 
+      - name: Build into boot.img
+        if: "${{ inputs.isRepackToBootImage == true }}"
+        run: |
+          echo "Downloading Magisk..."
+          wget -q https://github.com/topjohnwu/Magisk/releases/download/v30.7/Magisk-v30.7.apk -O magisk.zip
+          
+          echo "Extracting magiskboot..."
+          unzip -p magisk.zip lib/x86_64/libmagiskboot.so > magiskboot
+          chmod +x magiskboot
+
+          if [ ! -f "boot.img" ]; then
+            echo "Error: prebuild boot.img not found in this repository!"
+            exit 1
+          fi
+
+          echo "Unpacking stock boot.img..."
+          ./magiskboot unpack boot.img
+          
+          echo "Replacing kernel..."
+          cp ${{ github.workspace }}/out/arch/arm64/boot/Image kernel
+          
+          echo "Repacking into new-boot.img..."
+          ./magiskboot repack boot.img result_boot.img
+          
+          echo "Done!"
+
+      - name: Upload Boot Image
+        if: "${{ inputs.isRepackToBootImage == true }}"
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-image-patched
+          path: result_boot.img 
+          retention-days: 7
+
       - name: Upload Kernel Image
+        if: "${{ inputs.isRepackToBootImage == false }}"      
         uses: actions/upload-artifact@v4
         with:
           name: kernel-image
