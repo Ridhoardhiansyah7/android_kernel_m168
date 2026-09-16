@@ -28,7 +28,7 @@
 #include <linux/sched.h>
 #include <video/sprd_mmsys_pw_domain.h>
 // #include <../../../../../bsp/kernel/kernel4.14/include/linux/hardware_info.h>
-#include <linux/hardware_info.h>
+//#include <linux/hardware_info.h>
 
 #include "csi_api.h"
 #ifdef CONFIG_COMPAT
@@ -752,8 +752,11 @@ static ssize_t sprd_sensor_set_sensor_name_info(struct device *dev,
 	end_p =strstr(buff_p,"5M");
 	memcpy(_sensor_sub_info, temp_p+1, (end_p)-(temp_p+1));
 
+	/*
 	get_hardware_info_data(HWID_MAIN_CAM,_sensor_main_info);
 	get_hardware_info_data(HWID_SUB_CAM,_sensor_sub_info);
+	*/
+	
 	pr_info("_sensor_main_info = %s _sensor_sub_info = %s",_sensor_main_info,_sensor_sub_info);
 	return size;
 
