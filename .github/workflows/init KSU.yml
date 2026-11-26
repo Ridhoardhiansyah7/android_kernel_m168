@@ -26,12 +26,9 @@ jobs:
         git rm -rf --cached KernelSU || true
         rm -rf KernelSU .git/modules/KernelSU
 
-        cd kernel-4.14
         curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash
-
         git submodule add https://github.com/Baka-SU/BakaSU.git KernelSU
 
-        cd ..
         grep -q 'path = KernelSU' .gitmodules
         git submodule status
 
