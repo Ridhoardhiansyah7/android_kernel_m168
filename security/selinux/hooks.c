@@ -104,7 +104,11 @@ struct selinux_state selinux_state;
 static atomic_t selinux_secmark_refcount = ATOMIC_INIT(0);
 
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
+#ifdef CONFIG_SECURITY_PERMISSIVE_SELINUX
+static int selinux_enforcing_boot = 0;
+#else
 static int selinux_enforcing_boot;
+#endif
 
 static int __init enforcing_setup(char *str)
 {
@@ -266,7 +270,7 @@ static int inode_alloc_security(struct inode *inode)
 	return 0;
 }
 
-static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dentry);
+int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dentry)
 
 /*
  * Try reloading inode security labels that have been marked as invalid.  The
@@ -1539,7 +1543,7 @@ static int selinux_genfs_get_sid(struct dentry *dentry,
 }
 
 /* The inode's security attributes must be initialized before first use. */
-static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dentry)
+int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dentry)
 {
 	struct superblock_security_struct *sbsec = NULL;
 	struct inode_security_struct *isec = inode->i_security;
@@ -3284,7 +3288,7 @@ static bool has_cap_mac_admin(bool audit)
 	return true;
 }
 
-static int selinux_inode_setxattr(struct dentry *dentry, const char *name,
+int selinux_inode_setxattr(struct dentry *dentry, const char *name,
 				  const void *value, size_t size, int flags)
 {
 	struct inode *inode = d_backing_inode(dentry);

@@ -111,3 +111,13 @@ config SECURITY_SELINUX_SIDTAB_HASH_BITS
 	  collisions may be viewed at /sys/fs/selinux/ss/sidtab_hash_stats. If
 	  chain lengths are high (e.g. > 20) then selecting a higher value here
 	  will ensure that lookups times are short and stable.
+
+config SECURITY_PERMISSIVE_SELINUX
+	bool "NSA SELinux Force permissive mode"
+	depends on SECURITY_SELINUX
+	default n
+	help
+	  Keep SELinux in permissive mode regardless of the boot
+	  parameters. Denials are logged but not enforced.
+
+	  If you are unsure, say N.
