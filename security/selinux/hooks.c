@@ -270,7 +270,7 @@ static int inode_alloc_security(struct inode *inode)
 	return 0;
 }
 
-int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dentry)
+int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dentry);
 
 /*
  * Try reloading inode security labels that have been marked as invalid.  The
