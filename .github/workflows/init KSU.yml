@@ -23,7 +23,7 @@ jobs:
 
     - name: Run ReSukiSU Setup
       run: |
-        git rm -rf --cached kernel-4.14/KernelSU || true
+        git rm -rf --cached KernelSU || true
         rm -rf KernelSU .git/modules/KernelSU
 
         cd kernel-4.14
