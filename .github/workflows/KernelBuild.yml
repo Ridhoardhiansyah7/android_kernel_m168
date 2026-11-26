@@ -109,22 +109,6 @@ jobs:
           echo "${{ github.workspace }}/toolchains/clang-r383902b/bin" >> $GITHUB_PATH
           echo "${{ github.workspace }}/toolchains/gcc-14.3/bin" >> $GITHUB_PATH
 
-      - name: Configure kernel
-        run: |
-          make -C $KERNEL_ROOT O=$KERNEL_ROOT/out ARCH=$ARCH ${{ inputs.defconfig }}
-
-      - name: Patch permissive
-        if: "${{ inputs.isPermissive == true }}"
-        run: |
-          # patch selinuxfs and hooks to force permissive
-          TARGET_BRANCH="KernelSU-permissive"
-          git fetch --depth 1 origin $TARGET_BRANCH
-          
-          git checkout FETCH_HEAD -- security/selinux/hooks.c
-          git checkout FETCH_HEAD -- security/selinux/selinuxfs.c
-          
-          echo "Patch successfuly from $TARGET_BRANCH branch"
-
       - name: Set build metadata
         run: |
           set -euo pipefail
