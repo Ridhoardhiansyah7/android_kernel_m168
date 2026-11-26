@@ -7,13 +7,18 @@ on:
         description: 'Kernel defconfig name'
         required: true
         default: 'a3core_eur_open_defconfig'
+      build_kernel_module:
+        description: "set to true if you want to build BSP kernel module file"
+        required: true
+        type: boolean
+        default: false
       isPermissive:
-        description: 'check this option to force permissive kernel'
+        description: 'check this option to make kernel permissive'
         required: true
         type: boolean
         default: false
       isFlashableZip:
-        description: 'check this option to generate flashable zip'
+        description: 'check this option to generate AnyKernel flashable zip'
         required: true
         type: boolean
         default: true
@@ -21,13 +26,58 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     env:
       ARCH: arm64
       KERNEL_ROOT: ${{ github.workspace }}
       CROSS_COMPILE: "${{ github.workspace }}/toolchains/gcc-14.3/bin/aarch64-none-linux-gnu-"
       CROSS_COMPILE_ARM32: "${{ github.workspace }}/toolchains/gcc-14.3/bin/arm-none-linux-gnueabihf-"
       CC: clang
+
+      # UNISOC Board-Specific Properties (used by (.ko) Makefiles)
+      # Android Build
+      BSP_BOARD_ARCH: arm64
+      BSP_BUILD_DT_OVERLAY: "y"
+      BSP_BUILD_ANDROID_OS: "y"
+      BSP_BUILD_FAMILY: "sharkl3"
+      BSP_BOARD_NAME: "sharkl3"
+      BSP_KERNEL_VERSION: "kernel4.14"
+
+      # PowerVR
+      TARGET_KERNEL_ARCH: "arm64"
+      BSP_SYSTEM_VERSION: "sharkl3"
+      BSP_PRODUCT_NAME: "sharkl3"
+      TARGET_BOARD: "sharkl3"
+      TARGET_BOARD_PLATFORM: "sharkl3"
+      PLATFORM_RELEASE: "11"
+      PLATFORM_VERSION: "11"
+      PLATFORM_VERSION_CODENAME: "R"
+      PLATFORM_CODENAME: "R"
+      BSP_ROOT_DIR: "${{ github.workspace }}"
+      BSP_OUT_PLATFORM: "${{ github.workspace }}/out"
+      BSP_KERNEL_OUT: "${{ github.workspace }}/out"
+      NDK_PLATFORMS_ROOT: "${{ github.workspace }}/prebuilts/ndk/platforms"
+
+      # WCN
+      BSP_BOARD_UNISOC_WCN_SOCKET: "sipc"
+      BSP_BOARD_WLAN_DEVICE: "sc2332"
+
+      # Camera
+      BSP_BOARD_CAMERA_MODULE_ISP_ADAPT_VERSION: "sharkl3"
+      BSP_BOARD_CAMERA_MODULE_ISP_VERSION: "isp2.6"
+      BSP_BOARD_CAMERA_MODULE_CSI_VERSION: "receiver_r2p0"
+      BSP_BOARD_CAMERA_MODULE_CPP_VERSION: "lite_r4p0"
+
+      # Some Modules in /socko.img
+      BSP_KERNEL_MODULE_LIST: |
+        pvrsrvkm:drivers/kernel_modules/gpu/rogue/driver/build/linux/sharkl3_android:NONE
+        sprd_fm:drivers/kernel_modules/wcn/fm/driver:NONE
+        sprdbt_tty:drivers/kernel_modules/wcn/bluetooth/driver:NONE
+        sprdwl_ng:drivers/kernel_modules/wcn/wlan:NONE
+        sprd_camera:drivers/kernel_modules/common/camera/core:NONE
+        sprd_cpp:drivers/kernel_modules/common/camera/cpp:NONE
+        sprd_flash_drv:drivers/kernel_modules/common/camera/flash/flash_drv:NONE
+        sprd_sensor:drivers/kernel_modules/common/camera/sensor:NONE
 
     steps:
       - name: Checkout repository
@@ -72,20 +122,272 @@ jobs:
           git checkout FETCH_HEAD -- security/selinux/selinuxfs.c
           
           echo "Patch successfuly from $TARGET_BRANCH branch"
-          
-      - name: Build kernel
-        run: |
 
-          # Build metadata
-          export KBUILD_BUILD_HOST="$(. /etc/os-release && echo ${NAME}-${VERSION_ID})"
-          export KBUILD_BUILD_TIMESTAMP="$(date '+%a %b %d %T WIB %Y')"
-        
-          # ignore yaml
+      - name: Set build metadata
+        run: |
+          set -euo pipefail
+          echo "[INFO]: Setting up build metadata..."
+          
+          BUILD_HOST="$(. /etc/os-release && echo "${NAME// /}-${VERSION_ID}")"
+          BUILD_TIMESTAMP="$(LC_ALL=C date '+%a %b %d %T %Z %Y')"
+
+          echo "KBUILD_BUILD_HOST=$BUILD_HOST" >> "$GITHUB_ENV"
+          echo "KBUILD_BUILD_TIMESTAMP=$BUILD_TIMESTAMP" >> "$GITHUB_ENV"
+
+          echo "--> KBUILD_BUILD_USER      = $KBUILD_BUILD_USER"
+          echo "--> KBUILD_BUILD_HOST      = $BUILD_HOST"
+          echo "--> KBUILD_BUILD_TIMESTAMP = $BUILD_TIMESTAMP"
+
+      - name: Write Shared Make Arguments
+        run: |
+          # Every step runs in its own shell, so share the make arguments via a sourced file
+          cat > "${RUNNER_TEMP}/make_args.sh" <<'EOF'
+          SRC="${GITHUB_WORKSPACE}"
+          OUT="${GITHUB_WORKSPACE}/out"
+          MOD_OUT="${GITHUB_WORKSPACE}/modules_out"
+
+          TOOLCHAIN_ARGS=(
+            LLVM=1
+            LLVM_IAS=1
+            ARCH="${ARCH}"
+            CC="${CC}"
+            LD="ld.lld"
+            AR="llvm-ar"
+            NM="llvm-nm"
+            OBJCOPY="llvm-objcopy"
+            OBJDUMP="llvm-objdump"
+            STRIP="llvm-strip"
+            CROSS_COMPILE="${CROSS_COMPILE}"
+            CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32}"
+            CLANG_TRIPLE="aarch64-none-linux-gnu-"
+          )
+          EOF
+          
+      - name: Build Kernel, Modules, and DTBs
+        env:
+          FORCE_PERMISSIVE: ${{ inputs.isPermissive }}
+        run: |
+          set -euo pipefail
+          source "${RUNNER_TEMP}/make_args.sh"
+          echo -e "\n[INFO]: KERNEL BUILD STARTED..!\n"
+
+          # Ignore yaml
           sed -i '/yamltree.o/d' scripts/dtc/Makefile
           sed -i '/dt_to_yaml/d' scripts/dtc/dtc.c
 
-          make -C $KERNEL_ROOT O=$KERNEL_ROOT/out -j$(nproc) \
-            ARCH=$ARCH CC=$CC CROSS_COMPILE=$CROSS_COMPILE Image
+          echo "[INFO]: Generating config from ${{ inputs.defconfig }}"
+          make -C "${SRC}" O="${OUT}" "${TOOLCHAIN_ARGS[@]}" "${{ inputs.defconfig }}"
+
+          # SELinux mode
+          if [ "${FORCE_PERMISSIVE}" = "true" ]; then
+            echo "[INFO]: Enabling CONFIG_SECURITY_PERMISSIVE_SELINUX..."
+            scripts/config --file "${OUT}/.config" -e SECURITY_PERMISSIVE_SELINUX
+          else
+            echo "[INFO]: Disabling CONFIG_SECURITY_PERMISSIVE_SELINUX..."
+            scripts/config --file "${OUT}/.config" -d SECURITY_PERMISSIVE_SELINUX
+          fi
+
+          # Disable DWARF so every module (in-tree and out-of-tree) is small from the start
+          echo "[INFO]: Disabling debug info..."
+          scripts/config --file "${OUT}/.config" \
+            -d DEBUG_INFO \
+            -d DEBUG_INFO_DWARF4 \
+            -d DEBUG_INFO_REDUCED \
+            -d DEBUG_INFO_SPLIT
+
+          make -C "${SRC}" O="${OUT}" "${TOOLCHAIN_ARGS[@]}" olddefconfig
+
+          # Verify the final .config. A symbol that is not defined in any Kconfig file is silently dropped by olddefconfig.
+          if grep -q '^CONFIG_SECURITY_PERMISSIVE_SELINUX=y' "${OUT}/.config"; then
+            ACTUAL=true
+          else
+            ACTUAL=false
+          fi
+          if [ "${ACTUAL}" != "${FORCE_PERMISSIVE}" ]; then
+            echo "::error::CONFIG_SECURITY_PERMISSIVE_SELINUX is '${ACTUAL}' but isPermissive is '${FORCE_PERMISSIVE}'. Is the symbol defined in a Kconfig file?"
+            exit 1
+          fi
+          echo "--> SELinux: CONFIG_SECURITY_PERMISSIVE_SELINUX = ${ACTUAL}"
+
+          if grep -q '^CONFIG_DEBUG_INFO=y' "${OUT}/.config"; then
+            echo "::error::CONFIG_DEBUG_INFO is still enabled after olddefconfig"
+            exit 1
+          fi
+
+          make -C "${SRC}" O="${OUT}" -j"$(nproc)" "${TOOLCHAIN_ARGS[@]}" Image modules dtbs
+
+          echo -e "\n[INFO]: KERNEL BUILD FINISHED..!"
+          ccache -s
+
+      - name: Install In-Tree Kernel Modules
+        run: |
+          set -euo pipefail
+          source "${RUNNER_TEMP}/make_args.sh"
+          echo "[INFO]: Installing in-tree kernel modules (debug sections stripped)..."
+          make -C "${SRC}" O="${OUT}" "${TOOLCHAIN_ARGS[@]}" \
+            INSTALL_MOD_PATH="${MOD_OUT}" \
+            INSTALL_MOD_STRIP=1 \
+            modules_install
+
+      - name: Build and Install Out-of-Tree Modules
+        if: ${{ inputs.build_kernel_module == true }}
+        run: |
+          set -euo pipefail
+          source "${RUNNER_TEMP}/make_args.sh"
+
+          export BSP_KERNEL_PATH="${OUT}"
+          export BSP_MODULES_OUT="${OUT}"
+          export KBUILD_EXTRA_SYMBOLS=""
+          FAILED=()
+
+          mkdir -p "${GITHUB_WORKSPACE}/prebuilts/ndk/platforms/android-29/arch-arm64/usr/include"
+
+          # Board properties passed on the command line
+          BSP_ARGS=(
+            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}"
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}"
+            BSP_BUILD_DT_OVERLAY="${BSP_BUILD_DT_OVERLAY}"
+            BSP_KERNEL_VERSION="${BSP_KERNEL_VERSION}"
+            BSP_BOARD_UNISOC_WCN_SOCKET="${BSP_BOARD_UNISOC_WCN_SOCKET}"
+            BSP_BOARD_WLAN_DEVICE="${BSP_BOARD_WLAN_DEVICE}"
+            BSP_BOARD_CAMERA_MODULE_ISP_ADAPT_VERSION="${BSP_BOARD_CAMERA_MODULE_ISP_ADAPT_VERSION}"
+            BSP_BOARD_CAMERA_MODULE_ISP_VERSION="${BSP_BOARD_CAMERA_MODULE_ISP_VERSION}"
+            BSP_BOARD_CAMERA_MODULE_CSI_VERSION="${BSP_BOARD_CAMERA_MODULE_CSI_VERSION}"
+            BSP_BOARD_CAMERA_MODULE_CPP_VERSION="${BSP_BOARD_CAMERA_MODULE_CPP_VERSION}"
+          )
+
+          # pvrsrvkm uses its own Android-style build system and needs extra arguments
+          PVR_ARGS=(
+            BUILD=release
+            TARGET_BOARD_PLATFORM="${TARGET_BOARD_PLATFORM}"
+            TARGET_BOARD="${TARGET_BOARD}"
+            TARGET_KERNEL_ARCH="${TARGET_KERNEL_ARCH}"
+            BSP_SYSTEM_VERSION="${BSP_SYSTEM_VERSION}"
+            BSP_PRODUCT_NAME="${BSP_PRODUCT_NAME}"
+            PLATFORM_VERSION="${PLATFORM_VERSION}"
+            PLATFORM_VERSION_CODENAME="${PLATFORM_VERSION_CODENAME}"
+            BSP_ROOT_DIR="${BSP_ROOT_DIR}"
+            BSP_OUT_PLATFORM="${BSP_OUT_PLATFORM}"
+            BSP_KERNEL_OUT="${BSP_KERNEL_OUT}"
+            BSP_KERNEL_CROSS_COMPILE="${CROSS_COMPILE}"
+            KCFLAGS="-Wno-error=cast-function-type -Wno-error=enum-conversion -Wno-error=missing-field-initializers"
+          )
+
+          # NOTE: "set -e" is ignored inside a function that is called from an "if",
+          # so every command here must end with "|| return 1".
+          build_module() {
+            local ko_name="$1" rel_path="$2" extra_args="$3"
+            local driver_path="${SRC}/${rel_path}"
+            local mod_args=() mod_dir
+
+            if [ ! -f "${driver_path}/Makefile" ]; then
+              echo "[WARN]: Makefile not found for ${ko_name} at ${driver_path}, skipping"
+              return 0
+            fi
+
+            echo "--> Building ${ko_name}..."
+            if [ -n "${KBUILD_EXTRA_SYMBOLS}" ]; then
+              mod_args+=(KBUILD_EXTRA_SYMBOLS="${KBUILD_EXTRA_SYMBOLS}")
+            fi
+            if [ -n "${extra_args}" ] && [ "${extra_args}" != "NONE" ]; then
+              mod_args+=(${extra_args})
+            fi
+            if [ "${ko_name}" = "pvrsrvkm" ]; then
+              mod_args+=("${PVR_ARGS[@]}")
+            fi
+
+            make -C "${driver_path}" "${TOOLCHAIN_ARGS[@]}" "${BSP_ARGS[@]}" "${mod_args[@]}" modules || return 1
+
+            # Locate the build output directory of this module
+            if [ "${ko_name}" = "pvrsrvkm" ]; then
+              mod_dir="${OUT}/sharkl3/obj/modules/pvrsrvkm/target_aarch64/kbuild"
+              mkdir -p "${OUT}/pvrsrvkm" || return 1
+              cp "${mod_dir}/pvrsrvkm.ko" "${OUT}/pvrsrvkm/" || return 1
+              echo "--> pvrsrvkm.ko copied to ${OUT}/pvrsrvkm"
+            else
+              mod_dir="${OUT}/${ko_name}"
+            fi
+
+            # Export symbols so later modules can link against this one
+            if [ -f "${OUT}/${ko_name}/Module.symvers" ]; then
+              KBUILD_EXTRA_SYMBOLS="${KBUILD_EXTRA_SYMBOLS} ${OUT}/${ko_name}/Module.symvers"
+            fi
+
+            if [ ! -d "${mod_dir}" ]; then
+              echo "[ERROR]: build output directory not found: ${mod_dir}"
+              return 1
+            fi
+
+            echo "--> Installing ${ko_name} (debug sections stripped)..."
+            make -C "${OUT}" M="${mod_dir}" "${TOOLCHAIN_ARGS[@]}" \
+              INSTALL_MOD_PATH="${MOD_OUT}" \
+              INSTALL_MOD_STRIP=1 \
+              modules_install || return 1
+          }
+
+          # Read the list on fd 3 so commands inside the loop cannot swallow stdin
+          while IFS=: read -r KO_NAME REL_PATH EXTRA_ARGS <&3; do
+            case "${KO_NAME}" in ''|'#'*) continue ;; esac
+            if ! build_module "${KO_NAME}" "${REL_PATH}" "${EXTRA_ARGS}"; then
+              echo "::warning::${KO_NAME} failed to build or install"
+              FAILED+=("${KO_NAME}")
+            fi
+          done 3<<< "${BSP_KERNEL_MODULE_LIST}"
+
+          echo "[INFO]: Generating final module dependency files..."
+          KERNEL_VERSION="$(awk '{print $3}' "${OUT}/include/generated/utsrelease.h" | tr -d '"')"
+          mkdir -p "${MOD_OUT}/lib/modules/${KERNEL_VERSION}"
+          touch "${MOD_OUT}/lib/modules/${KERNEL_VERSION}/modules.builtin.modinfo"
+          depmod -a -b "${MOD_OUT}" "${KERNEL_VERSION}"
+
+          if [ "${#FAILED[@]}" -gt 0 ]; then
+            echo "::error::Out-of-tree modules failed: ${FAILED[*]}"
+            exit 1
+          fi
+
+      - name: Package DTB and DTBO files
+        run: |
+          echo "[INFO]: Packaging DTB and DTBO files..."
+          mkdir -p "${{ github.workspace }}/build/dtb"
+          
+          # The standard location for UNISOC DTBs is arch/arm64/boot/dts/sprd
+          DTB_SOURCE_DIR="${{ github.workspace }}/out/arch/${{ env.ARCH }}/boot/dts/sprd"
+          DTB_DEST_DIR="${{ github.workspace }}/build/dtb"
+          
+          if [ -d "$DTB_SOURCE_DIR" ]; then
+              echo "--> Found DTB directory at $DTB_SOURCE_DIR"
+              find "$DTB_SOURCE_DIR" -name "*.dtb" -exec cp {} "$DTB_DEST_DIR/" \;
+              find "$DTB_SOURCE_DIR" -name "*.dtbo" -exec cp {} "$DTB_DEST_DIR/" \;
+          else
+              echo "::warning:: Standard UNISOC DTB directory not found. Searching all of boot/dts..."
+              find "${{ github.workspace }}/out/arch/${{ env.ARCH }}/boot/dts" -name "*.dtb" -exec cp {} "$DTB_DEST_DIR/" \;
+              find "${{ github.workspace }}/out/arch/${{ env.ARCH }}/boot/dts" -name "*.dtbo" -exec cp {} "$DTB_DEST_DIR/" \;
+          fi
+
+          if [ -z "$(ls -A $DTB_DEST_DIR)" ]; then
+              echo "::error::No DTB or DTBO files were found after the build. Check the build logs."
+              exit 1
+          else
+              echo "--> DTB/DTBO files successfully packaged."
+              ls -lR $DTB_DEST_DIR
+          fi
+
+      - name: Package Kernel and All Modules
+        run: |
+          echo "[INFO]: Packaging kernel and module artifacts..."
+          cp "${{ github.workspace }}/out/arch/${{ env.ARCH }}/boot/Image" "${{ github.workspace }}/build/Image"
+          
+          cd "${{ github.workspace }}/modules_out"
+          
+          echo "[INFO]: Removing 'source' and 'build' symlinks to prevent zip recursion..."
+          find . -type l -name "source" -delete
+          find . -type l -name "build" -delete
+          
+          echo "[INFO]: Zipping all modules..."
+          zip -r9 "${{ github.workspace }}/build/modules-${{ github.run_id }}.zip" .
+          
+          echo "Kernel Image, Modules ZIP, and DTBs are ready in the 'build' directory."
+          ls -lR ${{ github.workspace }}/build
 
       - name: Build AnyKernel3 Flashable Zip
         if: "${{ inputs.isFlashableZip == true }}"
@@ -116,10 +418,11 @@ jobs:
           path: AK3/
           retention-days: 7
 
-      - name: Upload Kernel Image
-        if: "${{ inputs.isFlashableZip == false }}"      
+      - name: Upload Kernel Module Zip
+        if: "${{ inputs.isFlashableZip == false }}"    
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-image
-          path: ${{ github.workspace }}/out/arch/arm64/boot/Image
+          name: kernel-build-${{ github.run_id }}
+          path: ${{ github.workspace }}/build/*
           retention-days: 7
+        
