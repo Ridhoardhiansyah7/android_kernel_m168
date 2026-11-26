@@ -33,6 +33,8 @@ jobs:
       CROSS_COMPILE: "${{ github.workspace }}/toolchains/gcc-14.3/bin/aarch64-none-linux-gnu-"
       CROSS_COMPILE_ARM32: "${{ github.workspace }}/toolchains/gcc-14.3/bin/arm-none-linux-gnueabihf-"
       CC: clang
+      TZ: Asia/Jakarta
+      KBUILD_BUILD_USER: 'Aflahal'
 
       # UNISOC Board-Specific Properties (used by (.ko) Makefiles)
       # Android Build
