@@ -2,7 +2,6 @@ name: KSU Integration
 
 on:
   workflow_dispatch:
-  
 
 jobs:
   integrate:
@@ -14,7 +13,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        ref: KernelSU
+        ref: 4.14.199-erofs
         fetch-depth: 0
 
     - name: Configure Git identity
@@ -22,22 +21,26 @@ jobs:
         git config --local user.name "Aflahal"
         git config --local user.email "zxx97607@gmail.com"
 
-    - name: Run KernelSU Setup
+    - name: Run ReSukiSU Setup
       run: |
-        rm -rf KernelSU
-        curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash
-        
-        git rm -r --cached KernelSU || true
-        find KernelSU -name ".git" -exec rm -rf {} + || true
+        git rm -rf --cached kernel-4.14/KernelSU || true
+        rm -rf KernelSU .git/modules/KernelSU
+
+        cd kernel-4.14
+        curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash
+
+        git submodule add https://github.com/Baka-SU/BakaSU.git KernelSU
+
+        cd ..
+        grep -q 'path = KernelSU' .gitmodules
+        git submodule status
 
     - name: Commit and Push
       run: |
         git add -A
-        
         if git diff --cached --quiet; then
           echo "No changes detected."
         else
-          git commit -m "kernel: update KernelSU source"
-          git push origin KernelSU
+          git commit -m "kernel: update ReSukiSU source"
+          git push origin 4.14.199-erofs
         fi
-        
