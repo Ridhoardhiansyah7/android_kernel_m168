@@ -30,11 +30,23 @@ jobs:
     env:
       ARCH: arm64
       KERNEL_ROOT: ${{ github.workspace }}
-      CROSS_COMPILE: "${{ github.workspace }}/toolchains/gcc-14.3/bin/aarch64-none-linux-gnu-"
-      CROSS_COMPILE_ARM32: "${{ github.workspace }}/toolchains/gcc-14.3/bin/arm-none-linux-gnueabihf-"
-      CC: clang
       TZ: Asia/Jakarta
       KBUILD_BUILD_USER: 'Aflahal'
+
+      # Ccache Flags
+      USE_CCACHE: 1
+      CCACHE_EXEC: /usr/bin/ccache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+      # Toolchain Paths
+      CLANG_BASE: ${{ github.workspace }}/toolchains/clang-r383902b
+      GCC_64_BASE: ${{ github.workspace }}/toolchains/gcc-14.3
+      GCC_32_BASE: ${{ github.workspace }}/toolchains/gcc-14.3
+
+      # Main Compiler and Cross-Compile Variables
+      CC: "ccache clang"
+      CROSS_COMPILE: "${{ github.workspace }}/toolchains/gcc-14.3/bin/aarch64-none-linux-gnu-"
+      CROSS_COMPILE_ARM32: "${{ github.workspace }}/toolchains/gcc-14.3/bin/arm-none-linux-gnueabihf-"
 
       # UNISOC Board-Specific Properties (used by (.ko) Makefiles)
       # Android Build
@@ -87,27 +99,65 @@ jobs:
         with:
           submodules: true
 
-      - name: Install dependencies
+      - name: Create build directories
         run: |
+          mkdir -p "${{ github.workspace }}/out" "${{ github.workspace }}/build" "${{ github.workspace }}/toolchains" "${{ github.workspace }}/modules_out"
+
+      - name: Cache Toolchains
+        id: cache-toolchains
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/toolchains
+          key: ${{ runner.os }}-toolchains-v3
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Setup System Dependencies
+        run: |
+          echo "[INFO]: Installing system requirements..."
           sudo apt-get update
-          sudo apt-get install -y \
-            make gcc g++ python3 libncurses-dev flex bison ccache \
-            libssl-dev libelf-dev libyaml-dev wget tar
+          sudo apt-get install -y --fix-missing \
+            git device-tree-compiler lz4 xz-utils zlib1g-dev zip make gcc g++ \
+            python3 python-is-python3 libncurses-dev flex bison gperf libssl-dev \
+            libelf-dev kmod pahole zstd libyaml-dev ccache
 
-      - name: Setup GCC 14.3 & Clang
+      - name: Download and Set up Toolchains
+        if: steps.cache-toolchains.outputs.cache-hit != 'true'
         run: |
-          mkdir -p toolchains/gcc-14.3 toolchains/clang-r383902b
-
-          # Download Clang
+          echo "[INFO] Setting up Toolchains..."
+          cd "${{ github.workspace }}/toolchains"
+          
+          echo "--> Downloading Clang..."
+          mkdir -p clang-r383902b
           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0e9e7035bf8ad42437c6156e5950eab13655b26c/clang-r383902b.tar.gz -O clang.tar.gz
-          tar -xf clang.tar.gz -C toolchains/clang-r383902b && rm clang.tar.gz
+          tar -xf clang.tar.gz -C clang-r383902b && rm clang.tar.gz
+          echo "--> Clang downloaded"
 
-          # Download GCC 14.3
+          echo "--> Downloading GCC 14.3..."
+          mkdir -p gcc-14.3
           wget -q https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
-          tar -xf gcc.tar.xz -C toolchains/gcc-14.3 --strip-components=1 && rm gcc.tar.xz
+          tar -xf gcc.tar.xz -C gcc-14.3 --strip-components=1 && rm gcc.tar.xz
+          echo "--> GCC downloaded"
 
-          echo "${{ github.workspace }}/toolchains/clang-r383902b/bin" >> $GITHUB_PATH
-          echo "${{ github.workspace }}/toolchains/gcc-14.3/bin" >> $GITHUB_PATH
+          echo "--> Setting permissions..."
+          chmod +x ${{ env.CLANG_BASE }}/bin/*
+          chmod +x ${{ env.GCC_64_BASE }}/bin/*
+          echo "--> Done"
+
+      - name: Set up PATH and ccache
+        run: |
+          echo "${{ env.CLANG_BASE }}/bin" >> $GITHUB_PATH
+          echo "${{ env.GCC_64_BASE }}/bin" >> $GITHUB_PATH
+          
+          echo "[INFO] Configuring ccache..."
+          ccache -M 5G
+          ccache -z
 
       - name: Set build metadata
         run: |
